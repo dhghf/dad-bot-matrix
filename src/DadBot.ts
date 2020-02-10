@@ -43,6 +43,30 @@ export class DadBot {
   }
 
   /**
+   * Start the bot (only public method)
+   * @returns {Promise<string>}
+   */
+  public async run(): Promise<string> {
+    // This will help us later prevent the bot from responding to itself
+    let userId = await this.client.getUserId();
+
+    // If the userId was got
+    if (userId) {
+      // Then start the MatrixClient object
+      await this.client.start();
+      // Begin the message listener
+      this.client.on('room.message', async (roomId: string, event: MessageEvent<any>) => {
+        // Make sure the event is something we need before responding
+        if (DadBot.isValidMessage(userId, event))
+          // If everything checks up then respond.
+          this.respond(roomId, event);
+      });
+    }
+    // UserID to interact with (mostly for logging purposes)
+    return userId;
+  }
+
+  /**
    * Makes sure the message is valid before responding "Hi name, I'm dad"
    * Rules:
    *  - No edit messages
@@ -119,30 +143,6 @@ export class DadBot {
 
     // return the name (if it's empty then there is no name!)
     return result;
-  }
-
-  /**
-   * Start the bot (only public method)
-   * @returns {Promise<string>}
-   */
-  public async run(): Promise<string> {
-    // This will help us later prevent the bot from responding to itself
-    let userId = await this.client.getUserId();
-
-    // If the userId was got
-    if (userId) {
-      // Then start the MatrixClient object
-      await this.client.start();
-      // Begin the message listener
-      this.client.on('room.message', async (roomId: string, event: MessageEvent<any>) => {
-        // Make sure the event is something we need before responding
-        if (DadBot.isValidMessage(userId, event))
-          // If everything checks up then respond.
-          this.respond(roomId, event);
-      });
-    }
-    // UserID to interact with (mostly for logging purposes)
-    return userId;
   }
 
   /**
