@@ -35,6 +35,7 @@ import {
  */
 export class DadBot {
   private readonly client: MatrixClient;
+  private static readonly triggerWords = ['im', 'i\'m', 'imma'];
 
   constructor(homeserver: string, token: string) {
     let storage = new SimpleFsStorageProvider(`${__dirname}/syncs.json`);
@@ -120,7 +121,7 @@ export class DadBot {
       // Bring the element to lower case
       let toLower = element.toLowerCase();
       // Look for "im" or "i'm"
-      if (toLower === 'im' || toLower === 'i\'m') {
+      if (DadBot.triggerWords.includes(toLower)) {
         // i = im + 1 which usually represents the name to mimic
         i = split.indexOf(element) + 1;
         // Break out of the loop.
