@@ -25,9 +25,7 @@ import {
   AutojoinRoomsMixin,
   MatrixClient,
   MessageEvent,
-  MessageEventContent,
   SimpleFsStorageProvider,
-  TextualMessageEventContent
 } from "matrix-bot-sdk";
 
 /**
@@ -73,7 +71,7 @@ export class DadBot {
    *  - No edit messages
    *  - Messages only should be text
    *  - No self-responding messages.
-   *  - Message must include "im" or "i'm" (NOT case-sensitive)
+   *  - Body must include at least one trigger word (NOT case-sensitive)
    * @param {string} userId The bot's user ID.
    * @param {MessageEvent} event The event to review
    * @returns {boolean}
@@ -94,8 +92,8 @@ export class DadBot {
       // No edits allowed.
       if (event.content['m.new_content'] !== undefined)
         isValid = false;
-      // Body must include "im" or "i'm"
-      if (!(split.includes('im') || split.includes('i\'m')))
+      // Body must include at least one trigger word (ie. i'm or im)
+      if (!split.some((word: string) => DadBot.triggerWords.includes(word)))
         isValid = false;
     } else
       isValid = false;
@@ -149,10 +147,10 @@ export class DadBot {
   /**
    * Responds to the message
    * @param {string} roomId To send the message to
-   * @param {MessageEvent<TextualMessageEventContent>} event Event to review before responding
+   * @param {MessageEvent} event Event to review before responding
    * @returns {Promise<void>}
    */
-  private async respond(roomId: string, event: MessageEvent<MessageEventContent>): Promise<void> {
+  private async respond(roomId: string, event: MessageEvent<any>): Promise<void> {
     // Get the name
     let name = DadBot.getName(event.content.body);
     // Build the response
