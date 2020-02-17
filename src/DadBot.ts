@@ -35,7 +35,7 @@ import {
  */
 export class DadBot {
   private readonly client: MatrixClient;
-  private static readonly triggerWords = ['im', 'i\'m', 'imma'];
+  private static readonly triggerWords = ['im', 'i\'m', 'imma', 'i’m'];
 
   constructor(homeserver: string, token: string) {
     let storage = new SimpleFsStorageProvider(`${__dirname}/syncs.json`);
