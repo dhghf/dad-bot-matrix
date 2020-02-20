@@ -1,5 +1,6 @@
 # Dad Bot for Matrix
 ## Requirements
+ - SQLite3
  - NodeJS & NPM
  - A Matrix user & homeserver
 
