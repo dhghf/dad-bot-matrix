@@ -1,4 +1,7 @@
 # Dad Bot for Matrix
+Come join [#dadbot:m.dhdf.dev](https://matrix.to/#/!HmwEBzKuGOFshjTOfX:m.dhdf.dev?via=m.dhdf.dev&via=the-apothecary.club&via=matrix.org)
+for discussions!
+
 ## Requirements
  - SQLite3
  - NodeJS & NPM
