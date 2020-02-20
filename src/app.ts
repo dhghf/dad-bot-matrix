@@ -31,7 +31,7 @@ type Config = {
 }
 
 function getConfig(): Config {
-  const configFile = fs.readFileSync(`${__dirname}/../config.yaml`);
+  const configFile = fs.readFileSync(`${__dirname}/../../config.yaml`);
   let toString = configFile.toString();
   return yaml.parse(toString);
 }

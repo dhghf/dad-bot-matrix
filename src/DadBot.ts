@@ -25,20 +25,63 @@ import {
   AutojoinRoomsMixin,
   MatrixClient,
   MessageEvent,
+  RoomEvent,
   SimpleFsStorageProvider,
 } from "matrix-bot-sdk";
+import { DBController } from "./DBController";
+
+type ResponseEvent = {
+  type: string;
+  content: object;
+  ready: boolean;
+}
 
 /**
  * This class handles the DadBot functions. Everything begins at the run method
  */
 export class DadBot {
   private readonly client: MatrixClient;
+  private static readonly dbName = `${__dirname}/events.db`;
+  private readonly db: DBController;
   private static readonly triggerWords = ['im', 'i\'m', 'imma', 'i’m'];
 
   constructor(homeserver: string, token: string) {
     let storage = new SimpleFsStorageProvider(`${__dirname}/syncs.json`);
     this.client = new MatrixClient(homeserver, token, storage);
+    this.db = new DBController(DadBot.dbName);
     AutojoinRoomsMixin.setupOnClient(this.client);
+  }
+
+  /**
+   * Makes sure the message is valid before responding "Hi name, I'm dad"
+   * Rules:
+   *  - Messages only should be text
+   *  - No self-responding messages.
+   *  - Body must include at least one trigger word (NOT case-sensitive)
+   * @param {string} userId The bot's user ID.
+   * @param {MessageEvent} event The event to review
+   * @returns {boolean}
+   */
+  private static isValidMessage(userId: string, event: RoomEvent<any>): boolean {
+    // Validation to return
+    let isValid = true;
+    let split: string[];
+
+    if (event.content.body) {
+      // Split up the context this will be easier to search the word "im" or "i'm" for without
+      // having to deal with whitespace issues.
+      split = event.content.body.toLowerCase().split(' ');
+
+      // Make sure it's only a text message and not the bot itself as well.
+      if (event.content.msgtype !== 'm.text' || userId === event.sender)
+        isValid = false;
+      // Body must include at least one trigger word (ie. i'm or im)
+      if (!split.some((word: string) => DadBot.triggerWords.includes(word)))
+        isValid = false;
+    } else
+      isValid = false;
+
+    return isValid;
   }
 
   /**
@@ -53,6 +96,9 @@ export class DadBot {
     if (userId) {
       // Then start the MatrixClient object
       await this.client.start();
+      // Start the database controller
+      await this.db.start();
+
       // Begin the message listener
       this.client.on('room.message', async (roomId: string, event: MessageEvent<any>) => {
         // Make sure the event is something we need before responding
@@ -63,42 +109,6 @@ export class DadBot {
     }
     // UserID to interact with (mostly for logging purposes)
     return userId;
-  }
-
-  /**
-   * Makes sure the message is valid before responding "Hi name, I'm dad"
-   * Rules:
-   *  - No edit messages
-   *  - Messages only should be text
-   *  - No self-responding messages.
-   *  - Body must include at least one trigger word (NOT case-sensitive)
-   * @param {string} userId The bot's user ID.
-   * @param {MessageEvent} event The event to review
-   * @returns {boolean}
-   */
-  private static isValidMessage(userId: string, event: MessageEvent<any>): boolean {
-    // Validation to return
-    let isValid = true;
-    let split: string[];
-
-    if (event.content.body) {
-      // Split up the context this will be easier to search the word "im" or "i'm" for without
-      // having to deal with whitespace issues.
-      split = event.content.body.toLowerCase().split(' ');
-
-      // Make sure it's only a text message and not the bot itself as well.
-      if (event.content.msgtype !== 'm.text' || userId === event.sender)
-        isValid = false;
-      // No edits allowed.
-      if (event.content['m.new_content'] !== undefined)
-        isValid = false;
-      // Body must include at least one trigger word (ie. i'm or im)
-      if (!split.some((word: string) => DadBot.triggerWords.includes(word)))
-        isValid = false;
-    } else
-      isValid = false;
-
-    return isValid;
   }
 
   /**
@@ -151,15 +161,81 @@ export class DadBot {
    * @returns {Promise<void>}
    */
   private async respond(roomId: string, event: MessageEvent<any>): Promise<void> {
+    // Build the response event
+    let response = await this.buildResponse(event);
+
+    // If the response was successfully built
+    if (response.ready) {
+      // Then send the response
+      // @ts-ignore Is event_id broken?
+      const eventID = event.event_id as string;
+      const respondedID = await this.client.sendEvent(roomId, response.type, response.content);
+
+      if (respondedID)
+        await this.db.addEventID(eventID, respondedID);
+    }
+  }
+
+  /**
+   * This gets the response event ready. It can possibly not be ready by some error that occurs.
+   * (this basically means something went wrong and DON'T use it)
+   * @param {MessageEvent} event Event to work with
+   * @return {Promise<ResponseEvent>}
+   */
+  private async buildResponse(event: MessageEvent<any>): Promise<ResponseEvent> {
+    // Response event to send
+    let response: ResponseEvent = {
+      type: 'm.room.message',
+      ready: false,
+      content: {
+        msgtype: 'm.notice'
+      }
+    };
     // Get the name
     let name = DadBot.getName(event.content.body);
-    // Build the response
-    let response = `Hi ${name}, I'm Dad.`;
+    // Build the response message
+    let message = `Hi ${name}, I'm Dad.`;
 
     // If the name was successfully gotten
     if (name.length > 0) {
-      // Then send the response
-      await this.client.sendText(roomId, response);
+      // Handle edit events that occur
+      if (event.content['m.new_content'])
+        response = await this.handleEdit(response, message, event);
+      // Otherwise handle it naturally with a body and msgtype
+      else {
+        response.content = {
+          ...response.content,
+          body: message
+        };
+        // Declare the response as ready to send
+        response.ready = true;
+      }
     }
+
+    return response;
+  }
+
+  private async handleEdit(response: ResponseEvent, newName: string, event: RoomEvent<any>) {
+    // @ts-ignore
+    const eventId = event.content['m.relates_to']['event_id'] as string;
+    const responseID = await this.db.getEventID(eventId);
+
+    if (responseID) {
+      response.content = {
+        ...response.content,
+        "m.new_content": {
+          "msgtype": "m.notice",
+          "body": newName
+        },
+        "m.relates_to": {
+          "rel_type": "m.replace",
+          "event_id": responseID
+        },
+        "body": ` * ${newName}`
+      };
+      response.ready = true;
+    }
+
+    return response;
   }
 }
