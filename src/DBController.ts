@@ -1,5 +1,9 @@
 import * as sqlite3 from 'sqlite3';
 
+export type StoredResponseEvent = {
+  responseID: string
+}
+
 export class DBController {
   private static readonly tableName = 'events';
   private static readonly responseColumn = 'responseID';
@@ -20,10 +24,13 @@ export class DBController {
    * @returns {Promise<void>}
    */
   public addEventID(eventId: string, responseId: string): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
+      if (!this.isReady)
+        await this.start();
+
       this.db.run(`INSERT INTO ${DBController.tableName} VALUES (?, ?)`,
         [eventId, responseId],
-        (err) => err ? reject(err) : resolve())
+        (err: Error | null) => err ? reject(err) : resolve())
     });
   }
 
@@ -33,17 +40,19 @@ export class DBController {
    * @returns {Promise<string|undefined>}
    */
   public getEventID(eventId: string): Promise<string | undefined> {
-    return new Promise((resolve, reject) => {
-      this.db.get(`SELECT * FROM ${DBController.tableName} WHERE ${DBController.eventColumn} = ?`,
-        [eventId], ((err: Error | null, row) => {
-          if (err)
-            reject(err);
-          else if (row)
-            resolve(row.responseID);
-          else {
-            resolve(undefined);
-          }
-        }))
+    return new Promise(async (resolve, reject) => {
+      if (!this.isReady)
+        await this.start();
+      const prep = this.db.prepare(
+        `SELECT ${DBController.responseColumn} FROM ${DBController.tableName} WHERE ${DBController.eventColumn} = ?`,
+        [eventId]
+      );
+      prep.get(((err: Error | null, response: StoredResponseEvent | undefined) => {
+        if (err)
+          reject(err);
+        else
+          resolve(response ? response.responseID : undefined);
+      }));
     });
   }
 
@@ -69,14 +78,19 @@ export class DBController {
    */
   private checkDB(): Promise<boolean> {
     return new Promise((resolve, reject) => {
-      this.db.get('SELECT * FROM sqlite_master WHERE name = ?', [DBController.tableName], ((err, row) => {
+      const prep = this.db.prepare(
+        'SELECT * FROM sqlite_master WHERE name = ?',
+        [DBController.tableName]
+      );
+
+      prep.get(((err, row: any[]) => {
         if (err)
           reject(err);
         if (row)
           resolve(true);
         else
           resolve(false);
-      }))
+      }));
     });
   }
 
@@ -86,9 +100,12 @@ export class DBController {
    */
   private setupDB(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.db.run(`CREATE TABLE ${DBController.tableName} (
-      ${DBController.eventColumn} TEXT PRIMARY KEY,
-      ${DBController.responseColumn} TEXT)`, (err) => err ? reject(err) : resolve());
+      const prep = this.db.prepare(`CREATE TABLE ${DBController.tableName} (
+        ${DBController.eventColumn} TEXT PRIMARY KEY,
+        ${DBController.responseColumn} TEXT)`
+      );
+
+      prep.run((err) => err ? reject(err) : resolve());
     });
   }
 }

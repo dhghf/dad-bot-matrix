@@ -100,7 +100,7 @@ export class DadBot {
       await this.db.start();
 
       // Begin the message listener
-      this.client.on('room.message', async (roomId: string, event: RoomEvent<any>) => {
+      this.client.on('room.message', async (roomId: string, event: MessageEvent<any>) => {
         // Make sure the event is something we need before responding
         if (DadBot.isValidMessage(userId, event))
           // If everything checks up then respond.
@@ -160,15 +160,19 @@ export class DadBot {
    * @param {MessageEvent} event Event to review before responding
    * @returns {Promise<void>}
    */
-  private async respond(roomId: string, event: RoomEvent<any>): Promise<void> {
+  private async respond(roomId: string, event: MessageEvent<any>): Promise<void> {
     // Build the response event
     let response = await this.buildResponse(event);
 
     // If the response was successfully built
     if (response.ready) {
       // Then send the response
+      // @ts-ignore Is event_id broken?
+      const eventID = event.event_id as string;
       const respondedID = await this.client.sendEvent(roomId, response.type, response.content);
-      await this.db.addEventID(event.eventId, respondedID);
+
+      if (respondedID)
+        await this.db.addEventID(eventID, respondedID);
     }
   }
 
@@ -178,7 +182,7 @@ export class DadBot {
    * @param {MessageEvent} event Event to work with
    * @return {Promise<ResponseEvent>}
    */
-  private async buildResponse(event: RoomEvent<any>): Promise<ResponseEvent> {
+  private async buildResponse(event: MessageEvent<any>): Promise<ResponseEvent> {
     // Response event to send
     let response: ResponseEvent = {
       type: 'm.room.message',
@@ -212,7 +216,9 @@ export class DadBot {
   }
 
   private async handleEdit(response: ResponseEvent, newName: string, event: RoomEvent<any>) {
-    const responseID = await this.db.getEventID(event.eventId);
+    // @ts-ignore
+    const eventId = event.content['m.relates_to']['event_id'] as string;
+    const responseID = await this.db.getEventID(eventId);
 
     if (responseID) {
       response.content = {
