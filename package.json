@@ -1,19 +1,23 @@
 {
   "name": "dad-bot-matrix",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "main": "index.js",
   "license": "MIT",
   "scripts": {
     "build": "tsc",
-    "start": "npm run build && node ./dist/app.js"
+    "test": "npm run build && jest ./dist/test/",
+    "start": "npm run build && node ./dist/src/app.js"
   },
   "devDependencies": {
+    "@types/jest": "^25.1.2",
     "@types/node": "^13.7.0",
+    "@types/sqlite3": "^3.1.6",
     "@types/yaml": "^1.2.0",
     "typescript": "^3.7.5"
   },
   "dependencies": {
     "matrix-bot-sdk": "^0.4.1",
+    "sqlite3": "^4.1.1",
     "yaml": "^1.7.2"
   }
 }
