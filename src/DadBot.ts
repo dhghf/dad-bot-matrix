@@ -58,6 +58,7 @@ export class DadBot {
    *  - Messages only should be text
    *  - No self-responding messages.
    *  - Body must include at least one trigger word (NOT case-sensitive)
+   *  - Dad bot should only respond to relevant messages
    * @param {string} userId The bot's user ID.
    * @param {MessageEvent} event The event to review
    * @returns {boolean}
@@ -78,10 +79,37 @@ export class DadBot {
       // Body must include at least one trigger word (ie. i'm or im)
       if (!split.some((word: string) => DadBot.triggerWords.includes(word)))
         isValid = false;
+      // The message must had been sent from the last minute to be responded to. This helps
+      // responding to messages from a long time ago (ie losing the last sync token)
+      // @ts-ignore
+      if (!DadBot.isRelevant(event['origin_server_ts']))
+        isValid = false;
+
     } else
       isValid = false;
 
     return isValid;
+  }
+
+  /**
+   * This checks whether or not an event's timestamp is relevant (this helps prevent DadBot from
+   * responding to really old messages)
+   * @param {number} timestamp Milliseconds
+   * @returns {boolean}
+   */
+  private static isRelevant(timestamp: number): boolean {
+    let now = new Date();
+    let msgDate = new Date(Math.floor((timestamp / 1000) * 1000));
+    let isRelevant = true;
+
+    if (now.getDate() != msgDate.getDate())
+      isRelevant = false;
+    else if (now.getHours() != msgDate.getHours())
+      isRelevant = false;
+    else if (now.getMinutes() != msgDate.getMinutes())
+      isRelevant = false;
+
+    return isRelevant;
   }
 
   /**
