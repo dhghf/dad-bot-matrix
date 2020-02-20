@@ -46,9 +46,15 @@ export class DadBot {
   private static readonly triggerWords = ['im', 'i\'m', 'imma', 'i’m'];
 
   constructor(homeserver: string, token: string) {
+    // This will allow DadBot to refer to the last sync token rather than syncing from the
+    // beginning of time (a little bit of an exaggeration)
     let storage = new SimpleFsStorageProvider(`${__dirname}/syncs.json`);
+    // Matrix client for sending and receiving messages
     this.client = new MatrixClient(homeserver, token, storage);
+    // This database allows us to store events that have been responded to. So that if a user
+    // changes their original message DadBot will change their original response.
     this.db = new DBController(DadBot.dbName);
+    // Auto-join rooms is a must!
     AutojoinRoomsMixin.setupOnClient(this.client);
   }
 
@@ -68,6 +74,7 @@ export class DadBot {
     let isValid = true;
     let split: string[];
 
+    // If there is a body / message..
     if (event.content.body) {
       // Split up the context this will be easier to search the word "im" or "i'm" for without
       // having to deal with whitespace issues.
@@ -98,17 +105,24 @@ export class DadBot {
    * @returns {boolean}
    */
   private static isRelevant(timestamp: number): boolean {
+    // Get the date of right now
     let now = new Date();
+    // Get the message's date. (this will help compare now and the messages date)
     let msgDate = new Date(Math.floor((timestamp / 1000) * 1000));
+    // Whether or not this message is relevant
     let isRelevant = true;
 
+    // Is it still from today?
     if (now.getDate() != msgDate.getDate())
       isRelevant = false;
+    // Has it happened within the same hour today?
     else if (now.getHours() != msgDate.getHours())
       isRelevant = false;
+    // Has it happened within the same minute today?
     else if (now.getMinutes() != msgDate.getMinutes())
       isRelevant = false;
 
+    // Finally return whether or not it was relevant or not.
     return isRelevant;
   }
 
@@ -150,7 +164,7 @@ export class DadBot {
     // Split the context between the spaces, this will be easier to iterate through
     let split: string[] = context.split(' ');
     let i: number | undefined;
-    let j: number | undefined;
+    let j: number;
 
     // Iterate through the split up context
     for (let element of split) {
@@ -211,7 +225,7 @@ export class DadBot {
    * @return {Promise<ResponseEvent>}
    */
   private async buildResponse(event: MessageEvent<any>): Promise<ResponseEvent> {
-    // Response event to send
+    // Response event to send to the Matrix room
     let response: ResponseEvent = {
       type: 'm.room.message',
       ready: false,
@@ -229,8 +243,9 @@ export class DadBot {
       // Handle edit events that occur
       if (event.content['m.new_content'])
         response = await this.handleEdit(response, message, event);
-      // Otherwise handle it naturally with a body and msgtype
+      // Otherwise handle it naturally with a plain-text body
       else {
+        // Build the event content by adding the message to the body
         response.content = {
           ...response.content,
           body: message
@@ -243,24 +258,41 @@ export class DadBot {
     return response;
   }
 
+  /**
+   * If a user were to edit their original message that Dad Bot responded to this method handles
+   * that edit event and edits the response message
+   * @param {ResponseEvent} response This is the object that gets sent to the Matrix room (in
+   * this method it's used as a edit event)
+   * @param {string} newName The "new" name of when the user edited the message, it could still
+   * be the same.
+   * @param {RoomEvent} event Event to refer to for building this response.
+   */
   private async handleEdit(response: ResponseEvent, newName: string, event: RoomEvent<any>) {
     // @ts-ignore
+    // This is the event ID that this event is editing
     const eventId = event.content['m.relates_to']['event_id'] as string;
+    // Check the database if DadBot responded to this message that's being edited
     const responseID = await this.db.getEventID(eventId);
 
+    // If DadBot has responded to this message before then let's edit the response!
     if (responseID) {
       response.content = {
         ...response.content,
+        // This is the new message
         "m.new_content": {
           "msgtype": "m.notice",
           "body": newName
         },
+        // This tells what message it's modifying
         "m.relates_to": {
           "rel_type": "m.replace",
           "event_id": responseID
         },
+        // This is like a backup for clients that don't support edits
+        // (they will see " * Hi NAME, I'm Dad")
         "body": ` * ${newName}`
       };
+      // Declare this as ready to use
       response.ready = true;
     }
 
